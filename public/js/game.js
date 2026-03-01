@@ -111,6 +111,40 @@ document.addEventListener('keydown', (e) => {
     if (dir) socket.emit('move', dir);
 });
 
+// Mobile Swipe Controls
+let touchStartX = 0;
+let touchStartY = 0;
+
+document.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+}, { passive: false });
+
+document.addEventListener('touchend', (e) => {
+    if (gameState.status !== 'playing') return;
+    let touchEndX = e.changedTouches[0].screenX;
+    let touchEndY = e.changedTouches[0].screenY;
+
+    let diffX = touchEndX - touchStartX;
+    let diffY = touchEndY - touchStartY;
+
+    // Require a minimum swipe distance to avoid registering taps as swipes
+    if (Math.abs(diffX) < 30 && Math.abs(diffY) < 30) return;
+
+    let dir = null;
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+        // Horizontal swipe
+        if (diffX > 0) dir = { dx: 1, dy: 0 }; // Right
+        else dir = { dx: -1, dy: 0 };          // Left
+    } else {
+        // Vertical swipe
+        if (diffY > 0) dir = { dx: 0, dy: 1 }; // Down
+        else dir = { dx: 0, dy: -1 };          // Up
+    }
+
+    if (dir) socket.emit('move', dir);
+}, { passive: false });
+
 function draw() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height); // Clear canvas
