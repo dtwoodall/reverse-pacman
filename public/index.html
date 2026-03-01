@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reverse Pac-Man</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div id="ui-container">
+    <h1>REVERSE PAC-MAN</h1>
+    <div id="game-status">Waiting for players...</div>
+    <div id="score-board"></div>
+  </div>
+  <div id="lobby-container" style="display: none;">
+    <h2>LOBBY</h2>
+    <div id="lobby-players"></div>
+    <button id="ready-btn">READY UP</button>
+  </div>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/game.js"></script>
+</body>
+
+</html>

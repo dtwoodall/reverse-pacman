@@ -1,0 +1,111 @@
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #050510;
+  color: #0ff;
+  font-family: 'Press Start 2P', cursive;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#ui-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+  text-shadow: 0 0 10px #0ff;
+  font-family: 'Press Start 2P', cursive;
+}
+
+h1 {
+  margin: 0 0 15px 0;
+  font-size: 28px;
+  letter-spacing: 2px;
+}
+
+#game-status {
+  font-size: 14px;
+  color: #ff0;
+  text-shadow: 0 0 8px #ff0;
+  margin-bottom: 15px;
+  height: 20px;
+}
+
+#score-board {
+  font-size: 10px;
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.score-item {
+  padding: 8px 12px;
+  border: 2px solid #fff;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+#game-container {
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.4), inset 0 0 20px rgba(0, 255, 255, 0.2);
+  border: 4px solid #0ff;
+  border-radius: 8px;
+  background-color: #000;
+  position: relative;
+}
+
+canvas {
+  display: block;
+}
+
+#lobby-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.85);
+  border: 4px solid #0ff;
+  border-radius: 8px;
+  padding: 30px;
+  text-align: center;
+  z-index: 100;
+  box-shadow: 0 0 30px #0ff;
+}
+
+#lobby-container h2 {
+  margin-top: 0;
+  color: #ff0;
+  text-shadow: 0 0 10px #ff0;
+}
+
+#lobby-players {
+  margin-bottom: 20px;
+  text-align: left;
+  line-height: 2.0;
+}
+
+#ready-btn {
+  background: #000;
+  color: #0ff;
+  border: 2px solid #0ff;
+  padding: 10px 20px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+#ready-btn:hover {
+  background: #0ff;
+  color: #000;
+  box-shadow: 0 0 15px #0ff;
+}
+
+.player-lobby-row {
+  font-size: 14px;
+}
