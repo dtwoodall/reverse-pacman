@@ -3,6 +3,75 @@ const socket = io({ transports: ['websocket'] });
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+const fogCanvas = document.createElement('canvas');
+const fogCtx = fogCanvas.getContext('2d');
+
+// Audio System
+let audioCtx = null;
+let nextWakaTime = 0;
+let wakaPhase = 0;
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('touchstart', initAudio, { once: true });
+document.addEventListener('keydown', initAudio, { once: true });
+
+function playWakaBeep(freq, vol, duration) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+function updateAudio() {
+    if (gameState.status !== 'playing' || !gameState.pacman || !gameState.pacman.isAlive) return;
+    const myPlayer = gameState.players[myId];
+    if (!myPlayer || !myPlayer.isAlive) return;
+
+    const dx = gameState.pacman.x - myPlayer.x;
+    const dy = gameState.pacman.y - myPlayer.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    const maxDist = 15; // Silence beyond 15 tiles
+    if (dist > maxDist) return;
+
+    const now = performance.now();
+    if (now > nextWakaTime) {
+        let intensity = 1 - (dist / maxDist);
+        // Ensure intensity is within healthy bounds
+        intensity = Math.max(0.1, Math.min(1, intensity));
+
+        const volume = intensity * 0.4;
+        const speedMs = 150 + (1 - intensity) * 600;
+
+        const pitch = wakaPhase === 0 ? 300 : 450;
+        wakaPhase = 1 - wakaPhase;
+
+        playWakaBeep(pitch + (intensity * 100), volume, speedMs / 1000);
+
+        nextWakaTime = now + speedMs;
+    }
+}
+
 let gameState = {
     players: {},
     pellets: [],
@@ -239,9 +308,77 @@ function draw() {
             ctx.stroke();
         }
     }
+
+    // --- Fog of War rendering ---
+    const myPlayer = gameState.players[myId];
+    if (myPlayer && myPlayer.isAlive && gameState.status === 'playing') {
+        const px = myPlayer.x + 0.5;
+        const py = myPlayer.y + 0.5;
+        const poly = [];
+        const numRays = 360;
+        const maxDist = 8; // View distance in tiles
+
+        for (let i = 0; i < numRays; i += 2) {
+            let angle = (i * Math.PI) / 180;
+            let dx = Math.cos(angle) * 0.2;
+            let dy = Math.sin(angle) * 0.2;
+
+            let cx = px;
+            let cy = py;
+            let dist = 0;
+
+            while (dist < maxDist) {
+                cx += dx;
+                cy += dy;
+                dist += 0.2;
+
+                let gridX = Math.floor(cx);
+                let gridY = Math.floor(cy);
+
+                if (gridY < 0 || gridY >= gameState.maze.length || gridX < 0 || gridX >= gameState.maze[0].length) break;
+                if (gameState.maze[gridY][gridX] === 1) break;
+            }
+            poly.push({
+                x: offsetX + cx * cellSize,
+                y: offsetY + cy * cellSize
+            });
+        }
+
+        // Draw the pitch black overlay on an offscreen canvas
+        fogCanvas.width = canvas.width;
+        fogCanvas.height = canvas.height;
+        fogCtx.fillStyle = '#000';
+        fogCtx.fillRect(0, 0, fogCanvas.width, fogCanvas.height);
+
+        // Cut out the polygon with gradient
+        fogCtx.globalCompositeOperation = 'destination-out';
+        fogCtx.beginPath();
+        if (poly.length > 0) {
+            fogCtx.moveTo(poly[0].x, poly[0].y);
+            for (let i = 1; i < poly.length; i++) {
+                fogCtx.lineTo(poly[i].x, poly[i].y);
+            }
+            fogCtx.closePath();
+
+            const screenPx = offsetX + px * cellSize;
+            const screenPy = offsetY + py * cellSize;
+            const grad = fogCtx.createRadialGradient(screenPx, screenPy, 0, screenPx, screenPy, maxDist * cellSize);
+            grad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+            grad.addColorStop(0.7, 'rgba(0, 0, 0, 1)'); // Sharp center
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            fogCtx.fillStyle = grad;
+            fogCtx.fill();
+        }
+
+        // Draw the fog onto the main canvas
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(fogCanvas, 0, 0);
+    }
 }
 
 function gameLoop() {
+    updateAudio();
     draw();
     requestAnimationFrame(gameLoop);
 }
