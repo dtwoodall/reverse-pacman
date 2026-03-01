@@ -76,19 +76,24 @@ initPacman();
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Create new player at grid (1, 1)
-    state.players[socket.id] = {
-        x: 1,
-        y: 1,
-        dx: 0,
-        dy: 0,
-        score: 0,
-        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
-        isAlive: true,
-        isReady: false
-    };
+    socket.on('join', (name) => {
+        let cleanName = (name || "Ghost").substring(0, 10).toUpperCase();
 
-    socket.emit('init', { id: socket.id, state });
+        state.players[socket.id] = {
+            name: cleanName,
+            x: 1,
+            y: 1,
+            dx: 0,
+            dy: 0,
+            score: 0,
+            color: '#' + Math.floor(Math.random() * 16777215).toString(16),
+            isAlive: state.status !== 'playing', // Join as spectator if game started
+            isReady: false
+        };
+
+        socket.emit('init', { id: socket.id, state });
+        checkAllReady();
+    });
 
     socket.on('ready', () => {
         if (state.players[socket.id]) {
@@ -107,6 +112,7 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
         delete state.players[socket.id];
+        checkAllReady();
     });
 });
 

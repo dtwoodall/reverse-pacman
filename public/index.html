@@ -10,10 +10,15 @@
 </head>
 
 <body>
-  <div id="ui-container">
+  <div id="ui-container" style="display: none;">
     <h1>REVERSE PAC-MAN</h1>
     <div id="game-status">Waiting for players...</div>
     <div id="score-board"></div>
+  </div>
+  <div id="name-container">
+    <h2>ENTER NAME</h2>
+    <input type="text" id="name-input" maxlength="10" placeholder="e.g. BLINKY" autofocus>
+    <button id="join-btn">JOIN GAME</button>
   </div>
   <div id="lobby-container" style="display: none;">
     <h2>LOBBY</h2>

@@ -28,6 +28,15 @@ document.getElementById('ready-btn').addEventListener('click', () => {
     btn.disabled = true;
 });
 
+document.getElementById('join-btn').addEventListener('click', () => {
+    const nameInput = document.getElementById('name-input').value;
+    if (nameInput.trim().length > 0) {
+        socket.emit('join', nameInput.trim());
+        document.getElementById('name-container').style.display = 'none';
+        document.getElementById('ui-container').style.display = 'flex';
+    }
+});
+
 function updateUI() {
     const statusDiv = document.getElementById('game-status');
     const scoreBoard = document.getElementById('score-board');
@@ -43,7 +52,7 @@ function updateUI() {
         const p = gameState.players[id];
         if (p.isAlive) aliveCount++;
 
-        let label = id === myId ? "YOU" : "P";
+        let label = id === myId ? "YOU" : p.name;
         scoresHTML += `<div class="score-item" style="color: ${p.color}; border-color: ${p.color}; box-shadow: 0 0 10px ${p.color} inset;">${label}: ${p.score || 0}</div>`;
     }
 
@@ -54,7 +63,7 @@ function updateUI() {
         let lobbyHTML = '';
         for (let id in gameState.players) {
             const p = gameState.players[id];
-            let label = id === myId ? "YOU" : "P";
+            let label = id === myId ? "YOU" : p.name;
             let readyText = p.isReady ? "READY" : "WAITING";
             lobbyHTML += `<div class="player-lobby-row" style="color: ${p.color}; text-shadow: 0 0 5px ${p.color}">${label}: ${readyText}</div>`;
         }
