@@ -104,8 +104,8 @@ io.on('connection', (socket) => {
 
     socket.on('move', (dir) => {
         if (state.players[socket.id]) {
-            state.players[socket.id].dx = dir.dx;
-            state.players[socket.id].dy = dir.dy;
+            state.players[socket.id].nextDx = dir.dx;
+            state.players[socket.id].nextDy = dir.dy;
         }
     });
 
@@ -123,10 +123,24 @@ setInterval(() => {
             let p = state.players[id];
             if (!p.isAlive) continue;
 
+            // Check if player has a queued turn and try to apply it
+            if (p.nextDx !== undefined && p.nextDy !== undefined) {
+                let checkX = p.x + p.nextDx;
+                let checkY = p.y + p.nextDy;
+                if (checkY >= 0 && checkY < state.maze.length && checkX >= 0 && checkX < state.maze[0].length) {
+                    if (state.maze[checkY][checkX] === 0) {
+                        p.dx = p.nextDx;
+                        p.dy = p.nextDy;
+                        p.nextDx = undefined;
+                        p.nextDy = undefined;
+                    }
+                }
+            }
+
             let newX = p.x + p.dx;
             let newY = p.y + p.dy;
 
-            // Wall collision checkout
+            // Wall collision checkout for actual move
             if (newY >= 0 && newY < state.maze.length && newX >= 0 && newX < state.maze[0].length) {
                 if (state.maze[newY][newX] === 0) { // 0 is path
                     p.x = newX;
