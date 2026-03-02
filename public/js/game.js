@@ -162,11 +162,31 @@ function updateUI() {
 
         let label = id === myId ? "YOU" : p.name;
         let energyWidth = Math.max(0, p.energy) + "%";
+
+        let extraHTML = '';
+        if (id === myId && p.ghostClass === 'inky') {
+            let ticksLeft = 0;
+            if (gameState.gameTicks < 300) {
+                ticksLeft = 300 - gameState.gameTicks;
+            } else if (p.lastEmpTick && (gameState.gameTicks - p.lastEmpTick) < 300) {
+                ticksLeft = 300 - (gameState.gameTicks - p.lastEmpTick);
+            }
+            let cdWidth = Math.max(0, 100 - (ticksLeft / 300) * 100) + '%';
+            let cdColor = ticksLeft === 0 ? '#0ff' : '#055';
+            let cdText = ticksLeft === 0 ? 'EMP READY' : 'EMP CD';
+            extraHTML = `
+            <div style="font-size: 8px; margin-top: 4px; color: ${cdColor}; text-shadow: none;">${cdText}</div>
+            <div style="width: 100%; background: #222; height: 4px; border-radius: 2px; overflow: hidden; margin-top: 2px;">
+                <div style="width: ${cdWidth}; background: ${cdColor}; height: 100%;"></div>
+            </div>`;
+        }
+
         scoresHTML += `<div class="score-item" style="color: ${p.color}; border-color: ${p.color}; box-shadow: 0 0 10px ${p.color} inset; width: 80px;">
             <div style="margin-bottom: 5px;">${label}: ${p.score || 0}</div>
             <div style="width: 100%; background: #222; height: 6px; border-radius: 3px; overflow: hidden;">
                 <div style="width: ${energyWidth}; background: ${p.color}; height: 100%;"></div>
             </div>
+            ${extraHTML}
         </div>`;
     }
 
