@@ -19,13 +19,17 @@ const state = {
     players: {},
     pellets: [],
     pacman: { x: 0, y: 0 }, // To be implemented
-    maze: generateMaze(49, 41), // Ensure odd numbers
-    gameTicks: 0
+    maze: null,
+    specialRooms: [],
+    gameTicks: 0,
+    walls: [] // Array of temporary walls added by Pinky
 };
 
 function startGame() {
     state.status = 'playing';
-    state.maze = generateMaze(49, 41);
+    const generated = generateMaze(79, 61); // Even larger for more room
+    state.maze = generated.grid;
+    state.specialRooms = generated.specialRooms;
     initPellets();
     initPacman();
     state.gameTicks = 0;
@@ -39,8 +43,10 @@ function startGame() {
         state.players[id].score = 0;
         state.players[id].energy = 50;
         state.players[id].ghostMode = false;
+        state.players[id].siphonMode = false; // For Clyde
         state.players[id].aliveTime = 0;
     }
+    state.walls = []; // Clear any Pinky walls
 }
 
 function checkAllReady() {
@@ -55,15 +61,31 @@ function checkAllReady() {
 
 function initPellets() {
     state.pellets = [];
+    state.superPellets = [];
+
+    // Normal pellets
     for (let y = 0; y < state.maze.length; y++) {
         for (let x = 0; x < state.maze[0].length; x++) {
             if (state.maze[y][x] === 0) {
-                state.pellets.push({ x, y });
+                // Don't spawn normal pellets in the exact center of special rooms
+                const skip = state.specialRooms.some(r => r.x === x && r.y === y);
+                if (!skip && Math.random() < 0.3) {
+                    state.pellets.push({ x, y });
+                }
             }
         }
     }
+
+    // Super Pellets in Special Rooms
+    const powerUps = ['speed', 'pac_sense', 'invisibility', 'stun'];
+    for (let room of state.specialRooms) {
+        state.superPellets.push({
+            x: room.x,
+            y: room.y,
+            type: powerUps[Math.floor(Math.random() * powerUps.length)]
+        });
+    }
 }
-initPellets();
 
 function initPacman() {
     state.pacman = { x: 0, y: 0, isAlive: false, hasSpawned: false, moveAccumulator: 0, targetPlayerId: null, lastSeen: null };
@@ -85,7 +107,9 @@ io.on('connection', (socket) => {
             score: 0,
             energy: 0,
             ghostMode: false,
+            siphonMode: false,
             aliveTime: 0,
+            ghostClass: 'blinky',
             color: '#' + Math.floor(Math.random() * 16777215).toString(16),
             isAlive: state.status !== 'playing', // Join as spectator if game started
             isReady: false
@@ -109,14 +133,62 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('select_class', (cls) => {
+        if (state.players[socket.id] && state.status === 'lobby') {
+            const validClasses = ['blinky', 'pinky', 'inky', 'clyde'];
+            if (validClasses.includes(cls)) {
+                state.players[socket.id].ghostClass = cls;
+                io.emit('stateUpdate', state); // Broadcast class changes to lobby
+            }
+        }
+    });
+
     socket.on('ghost_toggle', () => {
         let p = state.players[socket.id];
         if (p && p.isAlive && state.status === 'playing') {
-            if (p.ghostMode) {
-                p.ghostMode = false;
-            } else if (p.energy >= 20) {
-                p.energy -= 20;
-                p.ghostMode = true;
+            const cls = p.ghostClass;
+
+            if (cls === 'blinky') {
+                if (p.ghostMode) {
+                    p.ghostMode = false;
+                } else if (p.energy >= 20) {
+                    p.energy -= 20;
+                    p.ghostMode = true;
+                }
+            } else if (cls === 'pinky') {
+                if (p.energy >= 30) {
+                    p.energy -= 30;
+                    // Find coordinate exactly behind Pinky
+                    let backX = p.x; let backY = p.y;
+                    if (p.dy === -1) backY++; else if (p.dy === 1) backY--;
+                    else if (p.dx === -1) backX++; else if (p.dx === 1) backX--;
+
+                    // Wrap if needed
+                    if (backX < 0) backX = state.maze[0].length - 1;
+                    if (backX >= state.maze[0].length) backX = 0;
+                    if (backY < 0) backY = state.maze.length - 1;
+                    if (backY >= state.maze.length) backY = 0;
+
+                    state.walls.push({ x: backX, y: backY, expiresAt: state.gameTicks + 50 });
+                }
+            } else if (cls === 'inky') {
+                // EMP - 50 energy, 5s duration, 30s cooldown
+                if (state.gameTicks >= 300) { // Can't use in first 30s
+                    if (!p.lastEmpTick || state.gameTicks - p.lastEmpTick >= 300) { // 30s cooldown
+                        if (p.energy >= 50) {
+                            p.energy -= 50;
+                            p.lastEmpTick = state.gameTicks;
+                            io.emit('audio_event', 'emp');
+                            for (let id in state.players) {
+                                if (id !== socket.id) {
+                                    state.players[id].empExpiresAt = state.gameTicks + 50;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (cls === 'clyde') {
+                p.siphonMode = !p.siphonMode;
             }
         }
     });
@@ -155,65 +227,138 @@ setInterval(() => {
             }
         }
 
+        // Expire temporary Pinky walls
+        state.walls = state.walls.filter(w => w.expiresAt > state.gameTicks);
+
         for (let id in state.players) {
             let p = state.players[id];
             if (!p.isAlive) continue;
 
+            const cls = p.ghostClass;
+
+            // Passive and Powerup Modifiers
+            let speedMult = 1.0;
+            let drainMult = 1.0;
+            if (cls === 'pinky') { speedMult = 1.05; drainMult = 1.05; }
+            if (cls === 'inky') { drainMult = 0.95; }
+            if (cls === 'clyde') { speedMult = 0.95; }
+
+            if (p.powerups && p.powerups.speed > state.gameTicks) speedMult += 0.30;
+            if (p.powerups && p.powerups.stunned > state.gameTicks) speedMult = 0.0;
+
+            // Invisibility Powerup or Ghost Mode
+            const isInvisible = (p.powerups && p.powerups.invisibility > state.gameTicks);
+            if (p.ghostMode) drainMult *= 5.0; // Blinky only (or powerup later)
+            // No drain penalty for powerup invisibility
+            if (p.siphonMode) drainMult *= 2.0; // Clyde
+
+            // Check Clyde Siphon effect
+            if (p.siphonMode && cls === 'clyde') {
+                p.siphonTargets = []; // Inform UI
+                const { hasLineOfSight } = require('./ai'); // Load helper
+                for (let otherId in state.players) {
+                    if (otherId !== id && state.players[otherId].isAlive) {
+                        let other = state.players[otherId];
+                        let dist = Math.max(Math.abs(p.x - other.x), Math.abs(p.y - other.y)); // Approx distance
+                        if (dist <= 5 && hasLineOfSight(state, p.x, p.y, other.x, other.y)) {
+                            // Steal 5 energy per second = 0.5 per tick
+                            let stolen = Math.min(other.energy, 0.5);
+                            other.energy -= stolen;
+                            p.energy = Math.min(100, p.energy + stolen);
+                            p.siphonTargets.push(otherId);
+                        }
+                    }
+                }
+            }
+
             // Update energy and time
             p.aliveTime += 0.1;
-            let depletion = baseDepletionRate * (p.ghostMode ? 5 : 1);
+            let depletion = baseDepletionRate * drainMult;
             p.energy -= depletion;
 
             if (p.energy <= 0) {
                 p.energy = 0;
                 p.isAlive = false;
                 p.ghostMode = false;
+                p.siphonMode = false;
                 continue;
             }
 
-            // Check if player has a queued turn and try to apply it
-            if (p.nextDx !== undefined && p.nextDy !== undefined) {
-                let checkX = p.x + p.nextDx;
-                let checkY = p.y + p.nextDy;
-                if (checkX < 0) checkX = state.maze[0].length - 1;
-                if (checkX >= state.maze[0].length) checkX = 0;
-                if (checkY < 0) checkY = state.maze.length - 1;
-                if (checkY >= state.maze.length) checkY = 0;
+            // Move Accumulator
+            p.moveAccumulator = (p.moveAccumulator || 0) + speedMult;
+            while (p.moveAccumulator >= 1.0) {
+                p.moveAccumulator -= 1.0;
 
-                if (state.maze[checkY][checkX] === 0) {
-                    p.dx = p.nextDx;
-                    p.dy = p.nextDy;
-                    p.nextDx = undefined;
-                    p.nextDy = undefined;
-                }
-            }
+                // Check if player has a queued turn and try to apply it
+                if (p.nextDx !== undefined && p.nextDy !== undefined) {
+                    let checkX = p.x + p.nextDx;
+                    let checkY = p.y + p.nextDy;
+                    if (checkX < 0) checkX = state.maze[0].length - 1;
+                    if (checkX >= state.maze[0].length) checkX = 0;
+                    if (checkY < 0) checkY = state.maze.length - 1;
+                    if (checkY >= state.maze.length) checkY = 0;
 
-            let newX = p.x + p.dx;
-            let newY = p.y + p.dy;
-            if (newX < 0) newX = state.maze[0].length - 1;
-            if (newX >= state.maze[0].length) newX = 0;
-            if (newY < 0) newY = state.maze.length - 1;
-            if (newY >= state.maze.length) newY = 0;
-
-            // Wall collision checkout for actual move
-            if (state.maze[newY][newX] === 0) { // 0 is path
-                p.x = newX;
-                p.y = newY;
-
-                // Collect pellet
-                if (!p.ghostMode) {
-                    const pIndex = state.pellets.findIndex(pellet => pellet.x === p.x && pellet.y === p.y);
-                    if (pIndex !== -1) {
-                        state.pellets.splice(pIndex, 1);
-                        p.score++;
-                        p.energy = Math.min(100, p.energy + 1);
+                    const isWall = state.maze[checkY][checkX] === 1 || state.walls.some(w => w.x === checkX && w.y === checkY);
+                    if (!isWall) {
+                        p.dx = p.nextDx;
+                        p.dy = p.nextDy;
+                        p.nextDx = undefined;
+                        p.nextDy = undefined;
                     }
                 }
-            }
-            // Check collision after player moves (Ghost mode makes intangible)
-            if (!p.ghostMode && state.pacman && state.pacman.isAlive && p.x === state.pacman.x && p.y === state.pacman.y) {
-                p.isAlive = false;
-                p.ghostMode = false;
+
+                let newX = p.x + p.dx;
+                let newY = p.y + p.dy;
+                if (newX < 0) newX = state.maze[0].length - 1;
+                if (newX >= state.maze[0].length) newX = 0;
+                if (newY < 0) newY = state.maze.length - 1;
+                if (newY >= state.maze.length) newY = 0;
+
+                // Wall collision checkout for actual move
+                const isWall = state.maze[newY][newX] === 1 || state.walls.some(w => w.x === newX && w.y === newY);
+                if (!isWall) {
+                    p.x = newX;
+                    p.y = newY;
+
+                    // Collect normal pellet
+                    if (!p.ghostMode && !isInvisible) {
+                        const pIndex = state.pellets.findIndex(pellet => pellet.x === p.x && pellet.y === p.y);
+                        if (pIndex !== -1) {
+                            state.pellets.splice(pIndex, 1);
+                            p.score++;
+                            p.energy = Math.min(100, p.energy + 1);
+                        }
+                    }
+
+                    // Collect Super Pellet
+                    const spIndex = state.superPellets.findIndex(sp => sp.x === p.x && sp.y === p.y);
+                    if (spIndex !== -1) {
+                        const sp = state.superPellets[spIndex];
+                        state.superPellets.splice(spIndex, 1);
+                        p.score += 5; // Bonus points
+
+                        p.powerups = p.powerups || {};
+                        if (sp.type === 'speed') p.powerups.speed = state.gameTicks + 50;
+                        if (sp.type === 'pac_sense') p.powerups.pacSense = state.gameTicks + 50;
+                        if (sp.type === 'invisibility') p.powerups.invisibility = state.gameTicks + 50;
+
+                        if (sp.type === 'stun') {
+                            for (let otherId in state.players) {
+                                if (otherId !== id && state.players[otherId].isAlive) {
+                                    state.players[otherId].powerups = state.players[otherId].powerups || {};
+                                    state.players[otherId].powerups.stunned = state.gameTicks + 30; // 3 seconds
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Check collision after player moves
+                if (!p.ghostMode && !isInvisible && state.pacman && state.pacman.isAlive && p.x === state.pacman.x && p.y === state.pacman.y) {
+                    p.isAlive = false;
+                    p.ghostMode = false;
+                    p.siphonMode = false;
+                }
             }
         }
 
@@ -237,6 +382,11 @@ setInterval(() => {
 
     io.emit('stateUpdate', state);
 }, 100);
+
+const initGen = generateMaze(79, 61);
+state.maze = initGen.grid;
+state.specialRooms = initGen.specialRooms;
+initPellets();
 
 server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);

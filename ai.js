@@ -45,7 +45,7 @@ function hasLineOfSight(state, x1, y1, x2, y2) {
 
     while (true) {
         if (cx === x2 && cy === y2) return true;
-        if (state.maze[cy][cx] === 1) return false;
+        if (state.maze[cy][cx] === 1 || (state.walls && state.walls.some(w => w.x === cx && w.y === cy))) return false;
 
         let e2 = 2 * err;
         if (e2 > -dy) { err -= dy; cx += sx; }
@@ -84,8 +84,9 @@ function getNextStepBFS(state, sx, sy, tx, ty) {
 
             let key = `${nx},${ny}`;
 
-            // Enraged ignores walls
-            if (state.maze[ny][nx] === 0 && !visited.has(key)) {
+            let isWall = state.maze[ny][nx] === 1 || (state.walls && state.walls.some(w => w.x === nx && w.y === ny));
+
+            if (!isWall && !visited.has(key)) {
                 visited.add(key);
                 queue.push({
                     x: nx,
@@ -133,19 +134,45 @@ function movePacman(state) {
     let targetY = null;
 
     if (isEnraged && players.length > 0) {
-        // Enrage: Nearest player with path prediction
-        let closest = players[0];
-        let minDist = Infinity;
-        for (let p of players) {
-            let dist = Math.abs(p.x - state.pacman.x) + Math.abs(p.y - state.pacman.y);
-            if (dist < minDist) { minDist = dist; closest = p; }
+        // Sort players by distance
+        let sortedPlayers = [...players].sort((a, b) => {
+            let distA = Math.abs(a.x - state.pacman.x) + Math.abs(a.y - state.pacman.y);
+            let distB = Math.abs(b.x - state.pacman.x) + Math.abs(b.y - state.pacman.y);
+            return distA - distB;
+        });
+
+        // Find the closest player with a valid path
+        let validPathFound = false;
+        for (let closest of sortedPlayers) {
+            let tX = closest.x + (closest.dx || 0) * 3;
+            let tY = closest.y + (closest.dy || 0) * 3;
+            tX = Math.max(0, Math.min(state.maze[0].length - 1, tX));
+            tY = Math.max(0, Math.min(state.maze.length - 1, tY));
+
+            let pathTest = getNextStepBFS(state, state.pacman.x, state.pacman.y, tX, tY);
+            if (pathTest) {
+                targetX = tX;
+                targetY = tY;
+                validPathFound = true;
+                break;
+            } else {
+                // If predicting fails, try direct path to player
+                pathTest = getNextStepBFS(state, state.pacman.x, state.pacman.y, closest.x, closest.y);
+                if (pathTest) {
+                    targetX = closest.x;
+                    targetY = closest.y;
+                    validPathFound = true;
+                    break;
+                }
+            }
         }
-        // Predict 3 tiles ahead
-        targetX = closest.x + (closest.dx || 0) * 3;
-        targetY = closest.y + (closest.dy || 0) * 3;
-        // Clamp to bounds
-        targetX = Math.max(0, Math.min(state.maze[0].length - 1, targetX));
-        targetY = Math.max(0, Math.min(state.maze.length - 1, targetY));
+
+        // If NO players have a valid path, default to nearest player anyway to try and wait them out
+        if (!validPathFound) {
+            let closest = sortedPlayers[0];
+            targetX = closest.x;
+            targetY = closest.y;
+        }
     } else {
         // Normal Hunt
         let canSeeSomeone = false;
@@ -198,7 +225,9 @@ function movePacman(state) {
             let nx = state.pacman.x + dir.dx; let ny = state.pacman.y + dir.dy;
             if (nx < 0) nx = state.maze[0].length - 1; if (nx >= state.maze[0].length) nx = 0;
             if (ny < 0) ny = state.maze.length - 1; if (ny >= state.maze.length) ny = 0;
-            return state.maze[ny][nx] === 0;
+
+            let isWall = state.maze[ny][nx] === 1 || (state.walls && state.walls.some(w => w.x === nx && w.y === ny));
+            return !isWall;
         });
         if (possibleMoves.length > 0) {
             const move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
@@ -221,4 +250,4 @@ function movePacman(state) {
     }
 }
 
-module.exports = { movePacman, spawnPacman };
+module.exports = { hasLineOfSight, movePacman, spawnPacman };

@@ -23,6 +23,20 @@
   <div id="lobby-container" style="display: none;">
     <h2>LOBBY</h2>
     <div id="lobby-players"></div>
+
+    <div id="class-selection" style="margin-bottom: 20px;">
+      <h3 style="color: #fff; margin-top: 0;">SELECT CLASS</h3>
+      <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap;">
+        <button class="class-btn selected" data-class="blinky" style="--c: #FF0000;">PHANTOM</button>
+        <button class="class-btn" data-class="pinky" style="--c: #FFB8FF;">TRAPPER</button>
+        <button class="class-btn" data-class="inky" style="--c: #00FFFF;">SABOTEUR</button>
+        <button class="class-btn" data-class="clyde" style="--c: #FFB852;">VAMPIRE</button>
+      </div>
+      <div id="class-desc" style="font-size: 11px; color: #ccc; max-width: 400px; margin: 0 auto; line-height: 1.4;">
+        Phantom (Blinky): Standard stats.<br>Active: Ghost Mode - Invisible & intangible for 20 energy.
+      </div>
+    </div>
+
     <button id="ready-btn">READY UP</button>
   </div>
   <div id="game-container">

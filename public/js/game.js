@@ -47,6 +47,9 @@ function updateAudio() {
     const myPlayer = gameState.players[myId];
     if (!myPlayer || !myPlayer.isAlive) return;
 
+    // Inky EMP Mute Audio
+    if (myPlayer.empExpiresAt && myPlayer.empExpiresAt > gameState.gameTicks) return;
+
     const dx = gameState.pacman.x - myPlayer.x;
     const dy = gameState.pacman.y - myPlayer.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -75,6 +78,7 @@ function updateAudio() {
 let gameState = {
     players: {},
     pellets: [],
+    superPellets: [],
     pacman: null
 };
 let myId = null;
@@ -116,6 +120,31 @@ document.getElementById('join-btn').addEventListener('click', () => {
     }
 });
 
+// Class Selection Logic
+const classButtons = document.querySelectorAll('.class-btn');
+const classDesc = document.getElementById('class-desc');
+
+const classDescriptions = {
+    blinky: "Phantom (Blinky): Standard stats.<br>Active: Ghost Mode - Invisible & intangible for 20 energy.",
+    pinky: "Trapper (Pinky): Faster (+5%), Faster drain.<br>Active: Phalanx - Drops impassable energy wall for 30 energy.",
+    inky: "Saboteur (Inky): Slower drain (-5%).<br>Active: EMP - Blackouts screen & audio for others for 50 energy (30s cooldown).",
+    clyde: "Vampire (Clyde): Standard stats.<br>Active: Siphon Mode - Drains 2x energy, points to players, steals 5 energy/s when close."
+};
+
+classButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        // Remove selected class from all
+        classButtons.forEach(b => b.classList.remove('selected'));
+        // Add selected class to clicked
+        btn.classList.add('selected');
+
+        const selectedClass = btn.getAttribute('data-class');
+        if (classDesc) classDesc.innerHTML = classDescriptions[selectedClass];
+
+        socket.emit('select_class', selectedClass);
+    });
+});
+
 function updateUI() {
     const statusDiv = document.getElementById('game-status');
     const scoreBoard = document.getElementById('score-board');
@@ -151,6 +180,7 @@ function updateUI() {
             statusDiv.style.color = "#f00";
             statusDiv.style.textShadow = "0 0 8px #f00";
             document.getElementById('ready-btn').style.display = 'none';
+            document.getElementById('class-selection').style.display = 'none';
 
             // Show rankings instead of ready status
             let rankedPlayers = Object.values(gameState.players).sort((a, b) => {
@@ -172,9 +202,13 @@ function updateUI() {
                 const p = gameState.players[id];
                 let label = id === myId ? "YOU" : p.name;
                 let readyText = p.isReady ? "READY" : "WAITING";
-                lobbyHTML += `<div class="player-lobby-row" style="color: ${p.color}; text-shadow: 0 0 5px ${p.color}">${label}: ${readyText}</div>`;
+                let className = p.ghostClass ? p.ghostClass.toUpperCase() : "BLINKY";
+                lobbyHTML += `<div class="player-lobby-row" style="color: ${p.color}; text-shadow: 0 0 5px ${p.color}">${label} (${className}): ${readyText}</div>`;
             }
             lobbyPlayers.innerHTML = lobbyHTML;
+
+            // Show class selection UI if we are in the lobby
+            document.getElementById('class-selection').style.display = 'block';
 
             statusDiv.innerText = "WAITING IN LOBBY...";
             statusDiv.style.color = "#0ff";
@@ -327,6 +361,20 @@ function draw() {
         };
     }
 
+    // Draw Pinky's Walls
+    if (gameState.walls) {
+        ctx.fillStyle = 'rgba(255, 184, 255, 0.5)'; // Pink energy wall
+        ctx.strokeStyle = '#FFB8FF';
+        ctx.lineWidth = 2;
+        for (let w of gameState.walls) {
+            const pos = getRelativeScreenPos(w.x + 0.5, w.y + 0.5);
+            if (pos.x >= -cellSize && pos.x <= canvas.width + cellSize && pos.y >= -cellSize && pos.y <= canvas.height + cellSize) {
+                ctx.fillRect(pos.x - cellSize / 2, pos.y - cellSize / 2, cellSize, cellSize);
+                ctx.strokeRect(pos.x - cellSize / 2, pos.y - cellSize / 2, cellSize, cellSize);
+            }
+        }
+    }
+
     // Draw pellets
     ctx.fillStyle = '#FFF';
     for (let pellet of gameState.pellets) {
@@ -336,6 +384,34 @@ function draw() {
             ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
             ctx.fill();
             ctx.closePath();
+        }
+    }
+
+    // Draw Super Pellets
+    if (gameState.superPellets) {
+        for (let sp of gameState.superPellets) {
+            const pos = getRelativeScreenPos(sp.x + 0.5, sp.y + 0.5);
+            if (pos.x >= -cellSize && pos.x <= canvas.width + cellSize && pos.y >= -cellSize && pos.y <= canvas.height + cellSize) {
+                if (sp.type === 'speed') ctx.fillStyle = '#FFFF00'; // Yellow
+                else if (sp.type === 'pac_sense') ctx.fillStyle = '#00FF00'; // Green
+                else if (sp.type === 'invisibility') ctx.fillStyle = '#800080'; // Purple
+                else if (sp.type === 'stun') ctx.fillStyle = '#FF0000'; // Red
+                else ctx.fillStyle = '#FFFFFF';
+
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.closePath();
+
+                // Add a glow effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.closePath();
+                ctx.shadowBlur = 0;
+            }
         }
     }
 
@@ -361,6 +437,7 @@ function draw() {
         if (pos.x < -cellSize || pos.x > canvas.width + cellSize || pos.y < -cellSize || pos.y > canvas.height + cellSize) continue;
 
         if (player.ghostMode) ctx.globalAlpha = 0.4;
+        if (player.siphonMode) ctx.globalAlpha = 0.7; // Visual cue for siphon
 
         ctx.fillStyle = player.color;
         ctx.beginPath();
@@ -393,14 +470,61 @@ function draw() {
             ctx.lineWidth = 2;
             ctx.stroke();
         }
+
+        // Draw Clyde Siphon Tethers
+        if (player.siphonTargets && player.siphonTargets.length > 0) {
+            ctx.strokeStyle = '#FFB852'; // Orange tether
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            for (let targetId of player.siphonTargets) {
+                const tPlayer = gameState.players[targetId];
+                if (tPlayer) {
+                    const tPos = getRelativeScreenPos(tPlayer.x + 0.5, tPlayer.y + 0.5);
+                    ctx.beginPath();
+                    ctx.moveTo(pos.x, pos.y);
+                    ctx.lineTo(tPos.x, tPos.y);
+                    ctx.stroke();
+                }
+            }
+            ctx.setLineDash([]); // Reset
+        }
+
+        // Draw active power-up statuses
+        if (player.powerups) {
+            const yOffset = pos.y - cellSize;
+            if (player.powerups.stunned > gameState.gameTicks) {
+                ctx.fillStyle = '#FF0000';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText("STUNNED!", pos.x, yOffset - 10);
+            }
+            if (player.powerups.invisibility > gameState.gameTicks) {
+                ctx.fillStyle = '#800080';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText("INVISIBLE", pos.x, yOffset - 10);
+                if (id !== myId) {
+                    // Force the other players to be fully invisible to you
+                    ctx.globalAlpha = 0.0;
+                }
+            }
+        }
+
         ctx.globalAlpha = 1.0;
     }
+
+
 
     // --- Fog of War rendering ---
     if (myPlayer && myPlayer.isAlive && gameState.status === 'playing') {
         const poly = [];
         const numRays = 360;
-        const maxDist = 8; // View distance in tiles
+
+        // Inky EMP Check
+        let maxDist = 8; // View distance in tiles
+        if (myPlayer.empExpiresAt && myPlayer.empExpiresAt > gameState.gameTicks) {
+            maxDist = 1.5; // Severe Fog of War reduction
+        }
 
         for (let i = 0; i < numRays; i += 2) {
             let angle = (i * Math.PI) / 180;
@@ -459,6 +583,65 @@ function draw() {
         // Draw the fog onto the main canvas
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(fogCanvas, 0, 0);
+    }
+
+    // Draw global UI overlays over the fog of war
+    if (myPlayer && myPlayer.powerups && myPlayer.powerups.pacSense > gameState.gameTicks && gameState.pacman && gameState.pacman.isAlive) {
+        // Draw an arrow pointing to Pacman globally
+        const pPos = getRelativeScreenPos(gameState.pacman.x + 0.5, gameState.pacman.y + 0.5);
+        const myScreenPos = getRelativeScreenPos(myPlayer.x + 0.5, myPlayer.y + 0.5);
+
+        const dx = pPos.x - myScreenPos.x;
+        const dy = pPos.y - myScreenPos.y;
+        const angle = Math.atan2(dy, dx);
+
+        // Draw compass arrow at fixed distance from player
+        const arrowDist = cellSize * 2;
+        const arrowX = myScreenPos.x + Math.cos(angle) * arrowDist;
+        const arrowY = myScreenPos.y + Math.sin(angle) * arrowDist;
+
+        ctx.save();
+        ctx.translate(arrowX, arrowY);
+        ctx.rotate(angle);
+        ctx.fillStyle = '#00FF00';
+        ctx.beginPath();
+        ctx.moveTo(10, 0);
+        ctx.lineTo(-10, -5);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, 5);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Clyde Siphon Tracking Arrows over the fog of war
+    if (myPlayer && myPlayer.isAlive && myPlayer.siphonMode && myPlayer.ghostClass === 'clyde') {
+        const myScreenPos = getRelativeScreenPos(myPlayer.x + 0.5, myPlayer.y + 0.5);
+        for (let tId in gameState.players) {
+            if (tId !== myId && gameState.players[tId].isAlive) {
+                const other = gameState.players[tId];
+                const oPos = getRelativeScreenPos(other.x + 0.5, other.y + 0.5);
+
+                const dx = oPos.x - myScreenPos.x;
+                const dy = oPos.y - myScreenPos.y;
+                const angle = Math.atan2(dy, dx);
+
+                const arrowDist = cellSize * 2.5; // Slightly further out to avoid overlapping Pac-Sense
+                const arrowX = myScreenPos.x + Math.cos(angle) * arrowDist;
+                const arrowY = myScreenPos.y + Math.sin(angle) * arrowDist;
+
+                ctx.save();
+                ctx.translate(arrowX, arrowY);
+                ctx.rotate(angle);
+                ctx.fillStyle = '#FFB852'; // Orange
+                ctx.beginPath();
+                ctx.moveTo(10, 0);
+                ctx.lineTo(-10, -5);
+                ctx.lineTo(-5, 0);
+                ctx.lineTo(-10, 5);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
     }
 }
 
