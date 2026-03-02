@@ -53,7 +53,7 @@ function hasLineOfSight(state, x1, y1, x2, y2) {
     }
 }
 
-function getNextStepBFS(state, sx, sy, tx, ty, isEnraged) {
+function getNextStepBFS(state, sx, sy, tx, ty) {
     if (sx === tx && sy === ty) return null;
 
     const queue = [{ x: sx, y: sy, path: [] }];
@@ -85,7 +85,7 @@ function getNextStepBFS(state, sx, sy, tx, ty, isEnraged) {
             let key = `${nx},${ny}`;
 
             // Enraged ignores walls
-            if ((state.maze[ny][nx] === 0 || isEnraged) && !visited.has(key)) {
+            if (state.maze[ny][nx] === 0 && !visited.has(key)) {
                 visited.add(key);
                 queue.push({
                     x: nx,
@@ -188,7 +188,7 @@ function movePacman(state) {
         targetY = state.pacman.y + m.dy;
     }
 
-    const nextStep = getNextStepBFS(state, state.pacman.x, state.pacman.y, targetX, targetY, isEnraged);
+    const nextStep = getNextStepBFS(state, state.pacman.x, state.pacman.y, targetX, targetY);
     if (nextStep) {
         state.pacman.x = nextStep.x;
         state.pacman.y = nextStep.y;
@@ -198,7 +198,7 @@ function movePacman(state) {
             let nx = state.pacman.x + dir.dx; let ny = state.pacman.y + dir.dy;
             if (nx < 0) nx = state.maze[0].length - 1; if (nx >= state.maze[0].length) nx = 0;
             if (ny < 0) ny = state.maze.length - 1; if (ny >= state.maze.length) ny = 0;
-            return state.maze[ny][nx] === 0 || isEnraged;
+            return state.maze[ny][nx] === 0;
         });
         if (possibleMoves.length > 0) {
             const move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
