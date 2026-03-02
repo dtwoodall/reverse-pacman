@@ -201,11 +201,13 @@ setInterval(() => {
                 p.y = newY;
 
                 // Collect pellet
-                const pIndex = state.pellets.findIndex(pellet => pellet.x === p.x && pellet.y === p.y);
-                if (pIndex !== -1) {
-                    state.pellets.splice(pIndex, 1);
-                    p.score++;
-                    p.energy = Math.min(100, p.energy + 1);
+                if (!p.ghostMode) {
+                    const pIndex = state.pellets.findIndex(pellet => pellet.x === p.x && pellet.y === p.y);
+                    if (pIndex !== -1) {
+                        state.pellets.splice(pIndex, 1);
+                        p.score++;
+                        p.energy = Math.min(100, p.energy + 1);
+                    }
                 }
             }
             // Check collision after player moves (Ghost mode makes intangible)
