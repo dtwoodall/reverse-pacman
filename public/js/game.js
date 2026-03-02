@@ -127,7 +127,7 @@ const classDesc = document.getElementById('class-desc');
 const classDescriptions = {
     blinky: "Phantom (Blinky): Standard stats.<br>Active: Ghost Mode - Invisible & intangible for 20 energy.",
     pinky: "Trapper (Pinky): Faster (+5%), Faster drain.<br>Active: Phalanx - Drops impassable energy wall for 30 energy.",
-    inky: "Saboteur (Inky): Slower drain (-5%).<br>Active: EMP - Blackouts screen & audio for others for 50 energy (30s cooldown).",
+    inky: "Saboteur (Inky): Slower drain (-5%).<br>Active: EMP - Blackouts screen & audio for others for 30 energy (30s cooldown).",
     clyde: "Vampire (Clyde): Standard stats.<br>Active: Siphon Mode - Drains 2x energy, points to players, steals 5 energy/s when close."
 };
 
@@ -456,7 +456,9 @@ function draw() {
         const pos = getRelativeScreenPos(player.x + 0.5, player.y + 0.5);
         if (pos.x < -cellSize || pos.x > canvas.width + cellSize || pos.y < -cellSize || pos.y > canvas.height + cellSize) continue;
 
-        if (player.ghostMode) ctx.globalAlpha = 0.4;
+        if (player.ghostMode || (player.powerups && player.powerups.invisibility > gameState.gameTicks)) {
+            ctx.globalAlpha = 0.4;
+        }
         if (player.siphonMode) ctx.globalAlpha = 0.7; // Visual cue for siphon
 
         ctx.fillStyle = player.color;
@@ -517,16 +519,6 @@ function draw() {
                 ctx.font = '10px "Press Start 2P"';
                 ctx.textAlign = 'center';
                 ctx.fillText("STUNNED!", pos.x, yOffset - 10);
-            }
-            if (player.powerups.invisibility > gameState.gameTicks) {
-                ctx.fillStyle = '#800080';
-                ctx.font = '10px "Press Start 2P"';
-                ctx.textAlign = 'center';
-                ctx.fillText("INVISIBLE", pos.x, yOffset - 10);
-                if (id !== myId) {
-                    // Force the other players to be fully invisible to you
-                    ctx.globalAlpha = 0.0;
-                }
             }
         }
 

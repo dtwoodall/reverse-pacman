@@ -172,11 +172,11 @@ io.on('connection', (socket) => {
                     state.walls.push({ x: backX, y: backY, expiresAt: state.gameTicks + 50 });
                 }
             } else if (cls === 'inky') {
-                // EMP - 50 energy, 5s duration, 30s cooldown
+                // EMP - 30 energy, 5s duration, 30s cooldown
                 if (state.gameTicks >= 300) { // Can't use in first 30s
                     if (!p.lastEmpTick || state.gameTicks - p.lastEmpTick >= 300) { // 30s cooldown
-                        if (p.energy >= 50) {
-                            p.energy -= 50;
+                        if (p.energy >= 30) {
+                            p.energy -= 30;
                             p.lastEmpTick = state.gameTicks;
                             io.emit('audio_event', 'emp');
                             for (let id in state.players) {
